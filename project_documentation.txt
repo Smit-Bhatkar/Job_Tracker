@@ -1,0 +1,1036 @@
+=============================================================================
+JOBTRACKER PROJECT DOCUMENTATION
+=============================================================================
+This file provides a complete overview, architectural description, and code listing
+for both the frontend and backend parts of the JobTracker application.
+
+-----------------------------------------------------------------------------
+1. ARCHITECTURE OVERVIEW
+-----------------------------------------------------------------------------
+JobTracker is a fullstack web application designed to track job applications
+through various stages of a job search pipeline (e.g., Wishlist, Applied,
+Interview, Offer, Rejected).
+
+It consists of:
+1. Backend: An ASP.NET Core REST API that handles HTTP requests, performs database
+   CRUD operations, and communicates with MongoDB.
+2. Frontend: An Angular Single Page Application (SPA) utilizing signals, standalone
+   components, reactive forms, and routing.
+3. Database: A local MongoDB instance running on port 27017 that stores job
+   applications in a collection called "Applications" within "JobTrackerDb".
+
+Communication flow:
+   User Browser <-> Angular Dev Server (4200) <-> API Backend (5227) <-> MongoDB (27017)
+   
+During development, the Angular dev server is configured with a proxy configuration
+(proxy.conf.json) that forwards any requests starting with '/api' to the backend
+API target (http://localhost:5227).
+
+-----------------------------------------------------------------------------
+2. DIRECTORY STRUCTURE
+-----------------------------------------------------------------------------
+JobTracker/
+│
+├── JobTracker.API/                     # Backend ASP.NET Core Project
+│   ├── Controllers/
+│   │   ├── ApplicationsController.cs    # REST API endpoints
+│   │   └── WeatherForecastController.cs # Template controller (unused)
+│   ├── Models/
+│   │   └── Application.cs               # MongoDB data model
+│   ├── Properties/
+│   │   └── launchSettings.json          # Ports and environment settings
+│   ├── Services/
+│   │   └── ApplicationService.cs        # MongoDB CRUD operations service
+│   ├── Settings/
+│   │   └── MongoDbSettings.cs           # Configuration settings mapping class
+│   ├── appsettings.json                 # Project configuration (connection string, etc)
+│   ├── appsettings.Development.json     # Environment-specific settings
+│   ├── JobTracker.API.csproj            # .NET Project file
+│   └── Program.cs                       # Application entry point & service registration
+│
+└── job-tracker-ui/                     # Frontend Angular Project
+    ├── src/
+    │   ├── app/
+    │   │   ├── components/
+    │   │   │   ├── application-form/    # Form for adding/editing applications
+    │   │   │   │   ├── application-form.component.css
+    │   │   │   │   ├── application-form.component.html
+    │   │   │   │   └── application-form.component.ts
+    │   │   │   ├── application-list/    # Dashboard application list/table view
+    │   │   │   │   ├── application-list.component.css
+    │   │   │   │   ├── application-list.component.html
+    │   │   │   │   └── application-list.component.ts
+    │   │   │   └── status-badge/        # Colored status pill component
+    │   │   │       └── status-badge.component.ts
+    │   │   │   ├── models/
+    │   │   │   │   └── application.model.ts # TypeScript interfaces and dropdown options
+    │   │   │   ├── services/
+    │   │   │   │   └── application.service.ts # HTTP Client communication service
+    │   │   │   ├── app.config.ts        # App providers (routes, http, error handler)
+    │   │   │   ├── app.routes.ts        # Routing configuration
+    │   │   │   ├── app.ts               # Root component TS
+    │   │   │   ├── app.html             # Root component HTML (header and router-outlet)
+    │   │   │   └── app.css              # Global layout/header styles
+    │   │   └── main.ts                  # Angular entry point
+    │   └── styles.css                   # Global base styles and variables
+    ├── angular.json                     # Angular CLI project configurations
+    ├── package.json                     # Dependencies and run scripts
+    └── proxy.conf.json                  # Dev proxy configuration (/api -> localhost:5227)
+
+
+=============================================================================
+3. BACKEND CODE LISTING (C# / ASP.NET CORE / MONGODB)
+=============================================================================
+
+-----------------------------------------------------------------------------
+3.1. JobTracker.API/Program.cs
+-----------------------------------------------------------------------------
+using JobTracker.API.Settings;    // For MongoDbSettings
+using JobTracker.API.Services;    // For ApplicationService
+
+var builder = WebApplication.CreateBuilder(args);
+
+// ---- MongoDB Settings via Options Pattern ----
+builder.Services.Configure<MongoDbSettings>(
+    builder.Configuration.GetSection("MongoDbSettings"));
+
+// ---- Register ApplicationService as Singleton ----
+builder.Services.AddSingleton<ApplicationService>();
+
+// ---- Add Controllers ----
+builder.Services.AddControllers();
+
+// ---- CORS (Cross-Origin Resource Sharing) ----
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowAngularDev", policy =>
+    {
+        policy.WithOrigins("http://localhost:4200")  // Angular dev server URL
+              .AllowAnyHeader()                       // Accept all headers
+              .AllowAnyMethod();                      // Accept all HTTP methods
+    });
+});
+
+// ---- OpenAPI / Swagger ----
+builder.Services.AddOpenApi();
+
+var app = builder.Build();
+
+// ---- OpenAPI (Development only) ----
+if (app.Environment.IsDevelopment())
+{
+    app.MapOpenApi();
+}
+
+// ---- Enable CORS ----
+app.UseCors("AllowAngularDev");
+
+app.UseAuthorization();
+
+// ---- Map Controller Routes ----
+app.MapControllers();
+
+// ---- Start the Server ----
+app.Run();
+
+-----------------------------------------------------------------------------
+3.2. JobTracker.API/appsettings.json
+-----------------------------------------------------------------------------
+{
+  "Logging": {
+    "LogLevel": {
+      "Default": "Information",
+      "Microsoft.AspNetCore": "Warning"
+    }
+  },
+  "AllowedHosts": "*",
+
+  "MongoDbSettings": {
+    "ConnectionString": "mongodb://localhost:27017",
+    "DatabaseName": "JobTrackerDb",
+    "CollectionName": "Applications"
+  }
+}
+
+-----------------------------------------------------------------------------
+3.3. JobTracker.API/Settings/MongoDbSettings.cs
+-----------------------------------------------------------------------------
+namespace JobTracker.API.Settings;
+
+public class MongoDbSettings
+{
+    public string ConnectionString { get; set; } = string.Empty;
+    public string DatabaseName { get; set; } = string.Empty;
+    public string CollectionName { get; set; } = string.Empty;
+}
+
+-----------------------------------------------------------------------------
+3.4. JobTracker.API/Models/Application.cs
+-----------------------------------------------------------------------------
+using MongoDB.Bson;
+using MongoDB.Bson.Serialization.Attributes;
+
+namespace JobTracker.API.Models;
+
+public class Application
+{
+    [BsonId]
+    [BsonRepresentation(BsonType.ObjectId)]
+    public string? Id { get; set; }
+
+    [BsonElement("company")]
+    public required string Company { get; set; }
+
+    [BsonElement("role")]
+    public required string Role { get; set; }
+
+    [BsonElement("type")]
+    public required string Type { get; set; }
+
+    [BsonElement("status")]
+    public required string Status { get; set; }
+
+    [BsonElement("dateApplied")]
+    public DateTime? DateApplied { get; set; }
+
+    [BsonElement("link")]
+    public string? Link { get; set; }
+
+    [BsonElement("notes")]
+    public string? Notes { get; set; }
+
+    [BsonElement("createdAt")]
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+}
+
+-----------------------------------------------------------------------------
+3.5. JobTracker.API/Services/ApplicationService.cs
+-----------------------------------------------------------------------------
+using Microsoft.Extensions.Options;    // For IOptions<T>
+using MongoDB.Driver;                  // For MongoClient, IMongoCollection, etc.
+using JobTracker.API.Models;           // For our Application model
+using JobTracker.API.Settings;         // For MongoDbSettings
+
+namespace JobTracker.API.Services;
+
+public class ApplicationService
+{
+    private readonly IMongoCollection<Application> _collection;
+
+    public ApplicationService(IOptions<MongoDbSettings> options)
+    {
+        var settings = options.Value;
+        var client = new MongoClient(settings.ConnectionString);
+        var database = client.GetDatabase(settings.DatabaseName);
+        _collection = database.GetCollection<Application>(settings.CollectionName);
+    }
+
+    public async Task<List<Application>> GetAllAsync()
+    {
+        return await _collection.Find(app => true).ToListAsync();
+    }
+
+    public async Task<Application?> GetByIdAsync(string id)
+    {
+        return await _collection.Find(app => app.Id == id).FirstOrDefaultAsync();
+    }
+
+    public async Task<Application> CreateAsync(Application application)
+    {
+        application.CreatedAt = DateTime.UtcNow;
+        await _collection.InsertOneAsync(application);
+        return application;
+    }
+
+    public async Task UpdateAsync(string id, Application application)
+    {
+        application.Id = id;
+        await _collection.ReplaceOneAsync(app => app.Id == id, application);
+    }
+
+    public async Task DeleteAsync(string id)
+    {
+        await _collection.DeleteOneAsync(app => app.Id == id);
+    }
+}
+
+-----------------------------------------------------------------------------
+3.6. JobTracker.API/Controllers/ApplicationsController.cs
+-----------------------------------------------------------------------------
+using Microsoft.AspNetCore.Mvc;   // For ControllerBase, attributes, action results
+using JobTracker.API.Models;       // For the Application model
+using JobTracker.API.Services;     // For ApplicationService
+
+namespace JobTracker.API.Controllers;
+
+[ApiController]
+[Route("api/[controller]")]
+public class ApplicationsController : ControllerBase
+{
+    private readonly ApplicationService _service;
+
+    public ApplicationsController(ApplicationService service)
+    {
+        _service = service;
+    }
+
+    [HttpGet]
+    public async Task<ActionResult<List<Application>>> GetAll()
+    {
+        var applications = await _service.GetAllAsync();
+        return Ok(applications);
+    }
+
+    [HttpGet("{id}")]
+    public async Task<ActionResult<Application>> GetById(string id)
+    {
+        var application = await _service.GetByIdAsync(id);
+        if (application == null)
+        {
+            return NotFound();
+        }
+        return Ok(application);
+    }
+
+    [HttpPost]
+    public async Task<ActionResult<Application>> Create(Application application)
+    {
+        var created = await _service.CreateAsync(application);
+        return CreatedAtAction(nameof(GetById), new { id = created.Id }, created);
+    }
+
+    [HttpPut("{id}")]
+    public async Task<IActionResult> Update(string id, Application application)
+    {
+        var existing = await _service.GetByIdAsync(id);
+        if (existing == null)
+        {
+            return NotFound();
+        }
+        await _service.UpdateAsync(id, application);
+        return NoContent();
+    }
+
+    [HttpDelete("{id}")]
+    public async Task<IActionResult> Delete(string id)
+    {
+        var application = await _service.GetByIdAsync(id);
+        if (application == null)
+        {
+            return NotFound();
+        }
+        await _service.DeleteAsync(id);
+        return NoContent();
+    }
+}
+
+
+=============================================================================
+4. FRONTEND CODE LISTING (TYPESCRIPT / ANGULAR / RXJS)
+=============================================================================
+
+-----------------------------------------------------------------------------
+4.1. job-tracker-ui/src/app/models/application.model.ts
+-----------------------------------------------------------------------------
+export interface Application {
+  id: string;            // MongoDB ObjectId as a string
+  company: string;       // Name of the company
+  role: string;          // Job title / role applied for
+  type: string;          // "Internship" or "Job"
+  status: string;        // Current pipeline stage
+  dateApplied: string | null;  // ISO date string, null if not yet applied
+  link: string | null;         // URL to the job posting
+  notes: string | null;        // Free-text notes
+  createdAt: string;     // ISO date string set by the backend on creation
+}
+
+export const STATUS_OPTIONS: string[] = [
+  'Wishlist',
+  'Applied',
+  'Interview',
+  'Offer',
+  'Rejected',
+];
+
+export const TYPE_OPTIONS: string[] = [
+  'Internship',
+  'Job',
+];
+
+-----------------------------------------------------------------------------
+4.2. job-tracker-ui/src/app/services/application.service.ts
+-----------------------------------------------------------------------------
+import { Injectable, inject } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+import { Observable } from 'rxjs';
+import { Application } from '../models/application.model';
+
+@Injectable({
+  providedIn: 'root',
+})
+export class ApplicationService {
+  private http = inject(HttpClient);
+  private baseUrl = '/api/applications';
+
+  getAll(): Observable<Application[]> {
+    return this.http.get<Application[]>(this.baseUrl);
+  }
+
+  getById(id: string): Observable<Application> {
+    return this.http.get<Application>(`${this.baseUrl}/${id}`);
+  }
+
+  create(app: Partial<Application>): Observable<Application> {
+    return this.http.post<Application>(this.baseUrl, app);
+  }
+
+  update(id: string, app: Partial<Application>): Observable<Application> {
+    return this.http.put<Application>(`${this.baseUrl}/${id}`, app);
+  }
+
+  delete(id: string): Observable<void> {
+    return this.http.delete<void>(`${this.baseUrl}/${id}`);
+  }
+}
+
+-----------------------------------------------------------------------------
+4.3. job-tracker-ui/src/app/components/status-badge/status-badge.component.ts
+-----------------------------------------------------------------------------
+import { Component, input } from '@angular/core';
+
+@Component({
+  selector: 'app-status-badge',
+  standalone: true,
+  template: `
+    <span class="badge" [class]="'badge badge--' + status().toLowerCase()">
+      {{ status() }}
+    </span>
+  `,
+  styles: `
+    .badge {
+      display: inline-block;
+      padding: 0.25rem 0.75rem;
+      border-radius: 9999px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: capitalize;
+      letter-spacing: 0.025em;
+      line-height: 1.4;
+      white-space: nowrap;
+    }
+    .badge--wishlist {
+      background-color: rgba(148, 163, 184, 0.15);
+      color: #94a3b8;
+    }
+    .badge--applied {
+      background-color: rgba(59, 130, 246, 0.15);
+      color: #3b82f6;
+    }
+    .badge--interview {
+      background-color: rgba(245, 158, 11, 0.15);
+      color: #f59e0b;
+    }
+    .badge--offer {
+      background-color: rgba(34, 197, 94, 0.15);
+      color: #22c55e;
+    }
+    .badge--rejected {
+      background-color: rgba(239, 68, 68, 0.15);
+      color: #ef4444;
+    }
+  `,
+})
+export class StatusBadgeComponent {
+  status = input.required<string>();
+}
+
+-----------------------------------------------------------------------------
+4.4. job-tracker-ui/src/app/components/application-list/application-list.component.ts
+-----------------------------------------------------------------------------
+import { Component, inject, signal, computed, OnInit } from '@angular/core';
+import { Router, RouterLink } from '@angular/router';
+import { ApplicationService } from '../../services/application.service';
+import { Application, STATUS_OPTIONS } from '../../models/application.model';
+import { StatusBadgeComponent } from '../status-badge/status-badge.component';
+import { DatePipe } from '@angular/common';
+
+@Component({
+  selector: 'app-application-list',
+  standalone: true,
+  imports: [RouterLink, StatusBadgeComponent, DatePipe],
+  templateUrl: './application-list.component.html',
+  styleUrl: './application-list.component.css',
+})
+export class ApplicationListComponent implements OnInit {
+  private appService = inject(ApplicationService);
+  private router = inject(Router);
+
+  applications = signal<Application[]>([]);
+  activeFilter = signal<string>('All');
+  loading = signal<boolean>(true);
+  statusOptions = STATUS_OPTIONS;
+
+  filteredApplications = computed(() => {
+    const filter = this.activeFilter();
+    const apps = this.applications();
+    if (filter === 'All') return apps;
+    return apps.filter(app => app.status === filter);
+  });
+
+  stats = computed(() => {
+    const apps = this.applications();
+    const counts: Record<string, number> = {};
+    for (const status of STATUS_OPTIONS) {
+      counts[status] = apps.filter(a => a.status === status).length;
+    }
+    return { total: apps.length, counts };
+  });
+
+  ngOnInit(): void {
+    this.loadApplications();
+  }
+
+  loadApplications(): void {
+    this.loading.set(true);
+    this.appService.getAll().subscribe({
+      next: (data) => {
+        this.applications.set(data);
+        this.loading.set(false);
+      },
+      error: (err) => {
+        console.error('Failed to load applications:', err);
+        this.loading.set(false);
+      },
+    });
+  }
+
+  setFilter(status: string): void {
+    this.activeFilter.set(status);
+  }
+
+  editApplication(id: string): void {
+    this.router.navigate(['/edit', id]);
+  }
+
+  deleteApplication(id: string, company: string): void {
+    if (!confirm(`Delete application for "${company}"? This cannot be undone.`)) {
+      return;
+    }
+    this.appService.delete(id).subscribe({
+      next: () => {
+        this.applications.update(apps => apps.filter(a => a.id !== id));
+      },
+      error: (err) => {
+        console.error('Failed to delete application:', err);
+        alert('Failed to delete. Please try again.');
+      },
+    });
+  }
+}
+
+-----------------------------------------------------------------------------
+4.5. job-tracker-ui/src/app/components/application-list/application-list.component.html
+-----------------------------------------------------------------------------
+<div class="list-container">
+  <div class="page-header">
+    <div>
+      <h1>Applications</h1>
+      <p class="subtitle">Track and manage your job applications</p>
+    </div>
+    <a routerLink="/add" class="btn btn-primary">
+      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"
+           fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+        <line x1="12" y1="5" x2="12" y2="19"/>
+        <line x1="5" y1="12" x2="19" y2="12"/>
+      </svg>
+      Add Application
+    </a>
+  </div>
+
+  <div class="stats-grid">
+    <div class="stat-card stat-card--total">
+      <span class="stat-label">Total</span>
+      <span class="stat-value">{{ stats().total }}</span>
+    </div>
+    @for (status of statusOptions; track status) {
+      <div class="stat-card" [class]="'stat-card stat-card--' + status.toLowerCase()">
+        <span class="stat-label">{{ status }}</span>
+        <span class="stat-value">{{ stats().counts[status] }}</span>
+      </div>
+    }
+  </div>
+
+  <div class="filter-bar">
+    <button
+      class="filter-btn"
+      [class.active]="activeFilter() === 'All'"
+      (click)="setFilter('All')">
+      All
+    </button>
+    @for (status of statusOptions; track status) {
+      <button
+        class="filter-btn"
+        [class.active]="activeFilter() === status"
+        [class]="'filter-btn filter-btn--' + status.toLowerCase()"
+        (click)="setFilter(status)">
+        {{ status }}
+      </button>
+    }
+  </div>
+
+  @if (loading()) {
+    <div class="loading-state">
+      <div class="spinner"></div>
+      <p>Loading applications...</p>
+    </div>
+  }
+
+  @if (!loading() && filteredApplications().length > 0) {
+    <div class="table-wrapper">
+      <table class="app-table">
+        <thead>
+          <tr>
+            <th>Company</th>
+            <th>Role</th>
+            <th>Type</th>
+            <th>Status</th>
+            <th>Date Applied</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (app of filteredApplications(); track app.id) {
+            <tr class="table-row">
+              <td class="cell-company">
+                @if (app.link) {
+                  <a [href]="app.link" target="_blank" rel="noopener" class="company-link">
+                    {{ app.company }}
+                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24"
+                         fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+                      <polyline points="15 3 21 3 21 9"/>
+                      <line x1="10" y1="14" x2="21" y2="3"/>
+                    </svg>
+                  </a>
+                } @else {
+                  <span>{{ app.company }}</span>
+                }
+              </td>
+              <td>{{ app.role }}</td>
+              <td>
+                <span class="type-tag">{{ app.type }}</span>
+              </td>
+              <td>
+                <app-status-badge [status]="app.status" />
+              </td>
+              <td class="cell-date">
+                @if (app.dateApplied) {
+                  {{ app.dateApplied | date:'mediumDate' }}
+                } @else {
+                  <span class="text-muted">—</span>
+                }
+              </td>
+              <td class="cell-actions">
+                <button class="btn-icon btn-edit" (click)="editApplication(app.id)"
+                        title="Edit application">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
+                       fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                  </svg>
+                </button>
+                <button class="btn-icon btn-delete" (click)="deleteApplication(app.id, app.company)"
+                        title="Delete application">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
+                       fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                    <polyline points="3 6 5 6 21 6"/>
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                  </svg>
+                </button>
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  }
+
+  @if (!loading() && filteredApplications().length === 0) {
+    <div class="empty-state">
+      <div class="empty-icon">
+        <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24"
+             fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round">
+          <rect x="2" y="7" width="20" height="14" rx="2" ry="2"/>
+          <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>
+        </svg>
+      </div>
+      @if (activeFilter() === 'All') {
+        <h2>No applications yet</h2>
+        <p>Start tracking your job search by adding your first application.</p>
+      } @else {
+        <h2>No {{ activeFilter() }} applications</h2>
+        <p>You don't have any applications with "{{ activeFilter() }}" status.</p>
+      }
+      <a routerLink="/add" class="btn btn-primary" style="margin-top: 1rem;">
+        Add Your First Application
+      </a>
+    </div>
+  }
+</div>
+
+-----------------------------------------------------------------------------
+4.6. job-tracker-ui/src/app/components/application-form/application-form.component.ts
+-----------------------------------------------------------------------------
+import { Component, inject, OnInit, signal } from '@angular/core';
+import { FormBuilder, FormGroup, Validators, ReactiveFormsModule } from '@angular/forms';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
+import { ApplicationService } from '../../services/application.service';
+import { STATUS_OPTIONS, TYPE_OPTIONS } from '../../models/application.model';
+
+@Component({
+  selector: 'app-application-form',
+  standalone: true,
+  imports: [ReactiveFormsModule, RouterLink],
+  templateUrl: './application-form.component.html',
+  styleUrl: './application-form.component.css',
+})
+export class ApplicationFormComponent implements OnInit {
+  private fb = inject(FormBuilder);
+  private appService = inject(ApplicationService);
+  private route = inject(ActivatedRoute);
+  private router = inject(Router);
+
+  isEditMode = signal(false);
+  applicationId = signal<string | null>(null);
+  loading = signal(false);
+  submitting = signal(false);
+
+  statusOptions = STATUS_OPTIONS;
+  typeOptions = TYPE_OPTIONS;
+
+  form: FormGroup = this.fb.group({
+    company:     ['', [Validators.required, Validators.maxLength(100)]],
+    role:        ['', [Validators.required, Validators.maxLength(100)]],
+    type:        ['Job'],
+    status:      ['Wishlist'],
+    dateApplied: [''],
+    link:        ['', [Validators.pattern(/^https?:\/\/.+/)]],
+    notes:       [''],
+  });
+
+  ngOnInit(): void {
+    const id = this.route.snapshot.paramMap.get('id');
+    if (id) {
+      this.isEditMode.set(true);
+      this.applicationId.set(id);
+      this.loadApplication(id);
+    }
+  }
+
+  private loadApplication(id: string): void {
+    this.loading.set(true);
+    this.appService.getById(id).subscribe({
+      next: (app) => {
+        this.form.patchValue({
+          company:     app.company,
+          role:        app.role,
+          type:        app.type,
+          status:      app.status,
+          dateApplied: app.dateApplied ? app.dateApplied.split('T')[0] : '',
+          link:        app.link || '',
+          notes:       app.notes || '',
+        });
+        this.loading.set(false);
+      },
+      error: (err) => {
+        console.error('Failed to load application:', err);
+        this.loading.set(false);
+        alert('Could not load application. Returning to list.');
+        this.router.navigate(['/']);
+      },
+    });
+  }
+
+  onSubmit(): void {
+    this.form.markAllAsTouched();
+    if (this.form.invalid) return;
+
+    this.submitting.set(true);
+    const formValue = this.form.value;
+    const payload = {
+      company:     formValue.company.trim(),
+      role:        formValue.role.trim(),
+      type:        formValue.type,
+      status:      formValue.status,
+      dateApplied: formValue.dateApplied || null,
+      link:        formValue.link?.trim() || null,
+      notes:       formValue.notes?.trim() || null,
+    };
+
+    if (this.isEditMode() && this.applicationId()) {
+      this.appService.update(this.applicationId()!, payload).subscribe({
+        next: () => this.router.navigate(['/']),
+        error: (err) => {
+          console.error('Failed to update application:', err);
+          this.submitting.set(false);
+          alert('Failed to save. Please try again.');
+        },
+      });
+    } else {
+      this.appService.create(payload).subscribe({
+        next: () => this.router.navigate(['/']),
+        error: (err) => {
+          console.error('Failed to create application:', err);
+          this.submitting.set(false);
+          alert('Failed to save. Please try again.');
+        },
+      });
+    }
+  }
+}
+
+-----------------------------------------------------------------------------
+4.7. job-tracker-ui/src/app/components/application-form/application-form.component.html
+-----------------------------------------------------------------------------
+<div class="form-container">
+  <div class="form-header">
+    <a routerLink="/" class="back-link">
+      <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24"
+           fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+        <line x1="19" y1="12" x2="5" y2="12"/>
+        <polyline points="12 19 5 12 12 5"/>
+      </svg>
+      Back to Applications
+    </a>
+    <h1>{{ isEditMode() ? 'Edit Application' : 'Add Application' }}</h1>
+    <p class="subtitle">
+      {{ isEditMode() ? 'Update the details below' : 'Fill in the details to track a new application' }}
+    </p>
+  </div>
+
+  @if (loading()) {
+    <div class="loading-state">
+      <div class="spinner"></div>
+      <p>Loading application data...</p>
+    </div>
+  }
+
+  @if (!loading()) {
+    <form [formGroup]="form" (ngSubmit)="onSubmit()" class="app-form">
+      <div class="form-group">
+        <label for="company" class="form-label">
+          Company <span class="required">*</span>
+        </label>
+        <input
+          id="company"
+          type="text"
+          formControlName="company"
+          class="form-input"
+          placeholder="e.g. Google, Microsoft, Startup Inc."
+          [class.input-error]="form.get('company')?.touched && form.get('company')?.invalid"
+        />
+        @if (form.get('company')?.touched && form.get('company')?.hasError('required')) {
+          <span class="error-msg">Company name is required</span>
+        }
+      </div>
+
+      <div class="form-group">
+        <label for="role" class="form-label">
+          Role <span class="required">*</span>
+        </label>
+        <input
+          id="role"
+          type="text"
+          formControlName="role"
+          class="form-input"
+          placeholder="e.g. Frontend Developer, Data Analyst"
+          [class.input-error]="form.get('role')?.touched && form.get('role')?.invalid"
+        />
+        @if (form.get('role')?.touched && form.get('role')?.hasError('required')) {
+          <span class="error-msg">Role is required</span>
+        }
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label for="type" class="form-label">Type</label>
+          <select id="type" formControlName="type" class="form-input">
+            @for (t of typeOptions; track t) {
+              <option [value]="t">{{ t }}</option>
+            }
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="status" class="form-label">Status</label>
+          <select id="status" formControlName="status" class="form-input">
+            @for (s of statusOptions; track s) {
+              <option [value]="s">{{ s }}</option>
+            }
+          </select>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label for="dateApplied" class="form-label">Date Applied</label>
+        <input
+          id="dateApplied"
+          type="date"
+          formControlName="dateApplied"
+          class="form-input"
+        />
+      </div>
+
+      <div class="form-group">
+        <label for="link" class="form-label">Job Posting URL</label>
+        <input
+          id="link"
+          type="url"
+          formControlName="link"
+          class="form-input"
+          placeholder="https://example.com/jobs/123"
+          [class.input-error]="form.get('link')?.touched && form.get('link')?.invalid"
+        />
+        @if (form.get('link')?.touched && form.get('link')?.hasError('pattern')) {
+          <span class="error-msg">Please enter a valid URL (must start with http:// or https://)</span>
+        }
+      </div>
+
+      <div class="form-group">
+        <label for="notes" class="form-label">Notes</label>
+        <textarea
+          id="notes"
+          formControlName="notes"
+          class="form-input form-textarea"
+          rows="4"
+          placeholder="Any additional notes about this application..."
+        ></textarea>
+      </div>
+
+      <div class="form-actions">
+        <a routerLink="/" class="btn btn-secondary">Cancel</a>
+        <button
+          type="submit"
+          class="btn btn-primary"
+          [disabled]="submitting()"
+        >
+          @if (submitting()) {
+            <span class="btn-spinner"></span>
+            Saving...
+          } @else {
+            {{ isEditMode() ? 'Update Application' : 'Save Application' }}
+          }
+        </button>
+      </div>
+    </form>
+  }
+</div>
+
+-----------------------------------------------------------------------------
+4.8. job-tracker-ui/src/app/app.ts
+-----------------------------------------------------------------------------
+import { Component } from '@angular/core';
+import { RouterOutlet, RouterLink, RouterLinkActive } from '@angular/router';
+
+@Component({
+  selector: 'app-root',
+  standalone: true,
+  imports: [RouterOutlet, RouterLink, RouterLinkActive],
+  templateUrl: './app.html',
+  styleUrl: './app.css',
+})
+export class App {}
+
+-----------------------------------------------------------------------------
+4.9. job-tracker-ui/src/app/app.html
+-----------------------------------------------------------------------------
+<header class="navbar">
+  <div class="navbar-inner">
+    <a routerLink="/" class="brand">
+      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
+           fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="2" y="7" width="20" height="14" rx="2" ry="2"/>
+        <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>
+      </svg>
+      <span class="brand-text">JobTracker</span>
+    </a>
+    <nav class="nav-links">
+      <a routerLink="/" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }">
+        Dashboard
+      </a>
+      <a routerLink="/add" routerLinkActive="active">
+        Add New
+      </a>
+    </nav>
+  </div>
+</header>
+
+<main class="main-content">
+  <router-outlet />
+</main>
+
+-----------------------------------------------------------------------------
+4.10. job-tracker-ui/src/app/app.routes.ts
+-----------------------------------------------------------------------------
+import { Routes } from '@angular/router';
+import { ApplicationListComponent } from './components/application-list/application-list.component';
+import { ApplicationFormComponent } from './components/application-form/application-form.component';
+
+export const routes: Routes = [
+  {
+    path: '',
+    component: ApplicationListComponent,
+    title: 'Applications - Job Tracker',
+  },
+  {
+    path: 'add',
+    component: ApplicationFormComponent,
+    title: 'Add Application - Job Tracker',
+  },
+  {
+    path: 'edit/:id',
+    component: ApplicationFormComponent,
+    title: 'Edit Application - Job Tracker',
+  },
+];
+
+-----------------------------------------------------------------------------
+4.11. job-tracker-ui/src/app/app.config.ts
+-----------------------------------------------------------------------------
+import { ApplicationConfig, provideBrowserGlobalErrorListeners } from '@angular/core';
+import { provideRouter } from '@angular/router';
+import { provideHttpClient } from '@angular/common/http';
+import { routes } from './app.routes';
+
+export const appConfig: ApplicationConfig = {
+  providers: [
+    provideBrowserGlobalErrorListeners(),
+    provideRouter(routes),
+    provideHttpClient(),
+  ],
+};
+
+-----------------------------------------------------------------------------
+4.12. job-tracker-ui/proxy.conf.json
+-----------------------------------------------------------------------------
+{
+  "/api": {
+    "target": "http://localhost:5227",
+    "secure": false,
+    "changeOrigin": true
+  }
+}
+
+=============================================================================
+5. SETUP AND RUNNING INSTRUCTIONS
+=============================================================================
+
+1. Make sure a MongoDB instance is running locally on port 27017.
+2. Navigate to the C# Backend folder `JobTracker.API/` and start the server:
+   $ dotnet run
+   (This starts the REST API on http://localhost:5227)
+3. Navigate to the Angular Frontend folder `job-tracker-ui/` and start the UI:
+   $ npm start
+   (This starts the dev server on http://localhost:4200 and proxies /api requests to localhost:5227)
+4. Open http://localhost:4200 in your browser to view the application.
+=============================================================================
