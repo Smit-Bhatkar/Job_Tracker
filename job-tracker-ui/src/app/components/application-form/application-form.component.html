@@ -1,0 +1,134 @@
+<section class="form-container">
+  <header class="form-header">
+    <a routerLink="/" class="back-link">
+      <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24"
+           fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+        <line x1="19" y1="12" x2="5" y2="12"/>
+        <polyline points="12 19 5 12 12 5"/>
+      </svg>
+      Back to Applications
+    </a>
+    <h1>{{ isEditMode() ? 'Edit Application' : 'Add Application' }}</h1>
+    <p class="subtitle">
+      {{ isEditMode() ? 'Update the details below' : 'Fill in the details to track a new application' }}
+    </p>
+  </header>
+
+  @if (loading()) {
+    <div class="loading-state">
+      <div class="spinner"></div>
+      <p>Loading application data...</p>
+    </div>
+  }
+
+  @if (!loading()) {
+    <form [formGroup]="form" (ngSubmit)="onSubmit()" class="app-form glass-card">
+      <div class="form-group">
+        <label for="company" class="form-label">
+          Company <span class="required">*</span>
+        </label>
+        <input
+          id="company"
+          type="text"
+          formControlName="company"
+          class="form-input"
+          placeholder="e.g. Google, Microsoft, Startup Inc."
+          [class.input-error]="form.get('company')?.touched && form.get('company')?.invalid"
+        />
+        @if (form.get('company')?.touched && form.get('company')?.hasError('required')) {
+          <span class="error-msg">Company name is required</span>
+        }
+      </div>
+
+      <div class="form-group">
+        <label for="role" class="form-label">
+          Role <span class="required">*</span>
+        </label>
+        <input
+          id="role"
+          type="text"
+          formControlName="role"
+          class="form-input"
+          placeholder="e.g. Frontend Developer, Data Analyst"
+          [class.input-error]="form.get('role')?.touched && form.get('role')?.invalid"
+        />
+        @if (form.get('role')?.touched && form.get('role')?.hasError('required')) {
+          <span class="error-msg">Role is required</span>
+        }
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label for="type" class="form-label">Type</label>
+          <select id="type" formControlName="type" class="form-input">
+            @for (t of typeOptions; track t) {
+              <option [value]="t">{{ t }}</option>
+            }
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="status" class="form-label">Status</label>
+          <select id="status" formControlName="status" class="form-input">
+            @for (s of statusOptions; track s) {
+              <option [value]="s">{{ s }}</option>
+            }
+          </select>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label for="dateApplied" class="form-label">Date Applied</label>
+        <input
+          id="dateApplied"
+          type="date"
+          formControlName="dateApplied"
+          class="form-input"
+        />
+      </div>
+
+      <div class="form-group">
+        <label for="link" class="form-label">Job Posting URL</label>
+        <input
+          id="link"
+          type="url"
+          formControlName="link"
+          class="form-input"
+          placeholder="https://example.com/jobs/123"
+          [class.input-error]="form.get('link')?.touched && form.get('link')?.invalid"
+        />
+        @if (form.get('link')?.touched && form.get('link')?.hasError('pattern')) {
+          <span class="error-msg">Please enter a valid URL (must start with http:// or https://)</span>
+        }
+      </div>
+
+      <div class="form-group">
+        <label for="notes" class="form-label">Notes</label>
+        <textarea
+          id="notes"
+          formControlName="notes"
+          class="form-input form-textarea"
+          rows="4"
+          placeholder="Any additional notes about this application..."
+        ></textarea>
+      </div>
+
+      <footer class="form-actions">
+        <a routerLink="/" class="btn btn-secondary">Cancel</a>
+        <button
+          type="submit"
+          class="btn btn-primary"
+          [disabled]="submitting()"
+          id="save-application-btn"
+        >
+          @if (submitting()) {
+            <span class="spinner"></span>
+            Saving...
+          } @else {
+            {{ isEditMode() ? 'Update Application' : 'Save Application' }}
+          }
+        </button>
+      </footer>
+    </form>
+  }
+</section>

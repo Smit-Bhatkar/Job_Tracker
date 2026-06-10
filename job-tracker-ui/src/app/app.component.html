@@ -1,0 +1,38 @@
+@if (authService.isLoggedIn()) {
+  <header class="navbar">
+    <nav class="navbar-inner">
+      <a routerLink="/" class="brand">
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
+             fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="2" y="7" width="20" height="14" rx="2" ry="2"/>
+          <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>
+        </svg>
+        <span class="brand-text">JobTracker</span>
+      </a>
+      <div class="nav-links">
+        <a routerLink="/" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }">
+          Dashboard
+        </a>
+        <a routerLink="/add" routerLinkActive="active">
+          Add New
+        </a>
+      </div>
+      <div class="nav-user">
+        <span class="user-greeting">{{ authService.user()?.username }}</span>
+        <button class="btn-logout" (click)="authService.logout()" id="logout-btn">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
+               fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+            <polyline points="16 17 21 12 16 7"/>
+            <line x1="21" y1="12" x2="9" y2="12"/>
+          </svg>
+          Sign Out
+        </button>
+      </div>
+    </nav>
+  </header>
+}
+
+<main class="main-content">
+  <router-outlet />
+</main>

@@ -1,0 +1,146 @@
+<section class="list-container">
+  <header class="page-header">
+    <div>
+      <h1>Applications</h1>
+      <p class="subtitle">Track and manage your job applications</p>
+    </div>
+    <a routerLink="/add" class="btn btn-primary" id="add-application-btn">
+      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"
+           fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+        <line x1="12" y1="5" x2="12" y2="19"/>
+        <line x1="5" y1="12" x2="19" y2="12"/>
+      </svg>
+      Add Application
+    </a>
+  </header>
+
+  <nav class="stats-grid" aria-label="Application statistics">
+    <div class="stat-card stat-card--total">
+      <span class="stat-label">Total</span>
+      <span class="stat-value">{{ stats().total }}</span>
+    </div>
+    @for (status of statusOptions; track status) {
+      <div class="stat-card" [class]="'stat-card stat-card--' + status.toLowerCase()">
+        <span class="stat-label">{{ status }}</span>
+        <span class="stat-value">{{ stats().counts[status] }}</span>
+      </div>
+    }
+  </nav>
+
+  <nav class="filter-bar" aria-label="Filter applications by status">
+    <button
+      class="filter-btn"
+      [class.active]="activeFilter() === 'All'"
+      (click)="setFilter('All')">
+      All
+    </button>
+    @for (status of statusOptions; track status) {
+      <button
+        class="filter-btn"
+        [class.active]="activeFilter() === status"
+        [class]="'filter-btn filter-btn--' + status.toLowerCase()"
+        (click)="setFilter(status)">
+        {{ status }}
+      </button>
+    }
+  </nav>
+
+  @if (loading()) {
+    <div class="loading-state">
+      <div class="spinner"></div>
+      <p>Loading applications...</p>
+    </div>
+  }
+
+  @if (!loading() && filteredApplications().length > 0) {
+    <div class="table-wrapper glass-card">
+      <table class="app-table">
+        <thead>
+          <tr>
+            <th>Company</th>
+            <th>Role</th>
+            <th>Type</th>
+            <th>Status</th>
+            <th>Date Applied</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (app of filteredApplications(); track app.id) {
+            <tr class="table-row">
+              <td class="cell-company">
+                @if (app.link) {
+                  <a [href]="app.link" target="_blank" rel="noopener" class="company-link">
+                    {{ app.company }}
+                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24"
+                         fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+                      <polyline points="15 3 21 3 21 9"/>
+                      <line x1="10" y1="14" x2="21" y2="3"/>
+                    </svg>
+                  </a>
+                } @else {
+                  <span>{{ app.company }}</span>
+                }
+              </td>
+              <td>{{ app.role }}</td>
+              <td>
+                <span class="type-tag">{{ app.type }}</span>
+              </td>
+              <td>
+                <app-status-badge [status]="app.status" />
+              </td>
+              <td class="cell-date">
+                @if (app.dateApplied) {
+                  {{ app.dateApplied | date:'mediumDate' }}
+                } @else {
+                  <span class="text-muted">—</span>
+                }
+              </td>
+              <td class="cell-actions">
+                <button class="btn-icon btn-edit" (click)="editApplication(app.id)"
+                        title="Edit application" id="edit-{{app.id}}">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
+                       fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                  </svg>
+                </button>
+                <button class="btn-icon btn-delete" (click)="deleteApplication(app.id, app.company)"
+                        title="Delete application" id="delete-{{app.id}}">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
+                       fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                    <polyline points="3 6 5 6 21 6"/>
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                  </svg>
+                </button>
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  }
+
+  @if (!loading() && filteredApplications().length === 0) {
+    <div class="empty-state glass-card">
+      <div class="empty-icon">
+        <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24"
+             fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round">
+          <rect x="2" y="7" width="20" height="14" rx="2" ry="2"/>
+          <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>
+        </svg>
+      </div>
+      @if (activeFilter() === 'All') {
+        <h2>No applications yet</h2>
+        <p>Start tracking your job search by adding your first application.</p>
+      } @else {
+        <h2>No {{ activeFilter() }} applications</h2>
+        <p>You don't have any applications with "{{ activeFilter() }}" status.</p>
+      }
+      <a routerLink="/add" class="btn btn-primary" style="margin-top: 1rem;">
+        Add Your First Application
+      </a>
+    </div>
+  }
+</section>

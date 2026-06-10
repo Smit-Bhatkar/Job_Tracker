@@ -1,0 +1,122 @@
+<section class="auth-page">
+  <div class="auth-background"></div>
+
+  <main class="auth-container">
+    <article class="auth-card glass-card">
+      <header class="auth-header">
+        <div class="auth-logo">
+          <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24"
+               fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="2" y="7" width="20" height="14" rx="2" ry="2"/>
+            <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>
+          </svg>
+        </div>
+        <h1>Create account</h1>
+        <p class="auth-subtitle">Start tracking your job applications</p>
+      </header>
+
+      @if (errorMessage()) {
+        <div class="alert alert-error" role="alert">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
+               fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <circle cx="12" cy="12" r="10"/>
+            <line x1="15" y1="9" x2="9" y2="15"/>
+            <line x1="9" y1="9" x2="15" y2="15"/>
+          </svg>
+          {{ errorMessage() }}
+        </div>
+      }
+
+      <form [formGroup]="form" (ngSubmit)="onSubmit()" class="auth-form">
+        <div class="form-group">
+          <label for="register-username" class="form-label">Username</label>
+          <input
+            id="register-username"
+            type="text"
+            formControlName="username"
+            class="form-input"
+            placeholder="Choose a username"
+            autocomplete="username"
+            [class.input-error]="form.get('username')?.touched && form.get('username')?.invalid"
+          />
+          @if (form.get('username')?.touched && form.get('username')?.hasError('required')) {
+            <span class="error-msg">Username is required</span>
+          }
+          @if (form.get('username')?.touched && form.get('username')?.hasError('minlength')) {
+            <span class="error-msg">Username must be at least 3 characters</span>
+          }
+        </div>
+
+        <div class="form-group">
+          <label for="register-email" class="form-label">Email</label>
+          <input
+            id="register-email"
+            type="email"
+            formControlName="email"
+            class="form-input"
+            placeholder="you@example.com"
+            autocomplete="email"
+            [class.input-error]="form.get('email')?.touched && form.get('email')?.invalid"
+          />
+          @if (form.get('email')?.touched && form.get('email')?.hasError('required')) {
+            <span class="error-msg">Email is required</span>
+          }
+          @if (form.get('email')?.touched && form.get('email')?.hasError('email')) {
+            <span class="error-msg">Please enter a valid email address</span>
+          }
+        </div>
+
+        <div class="form-group">
+          <label for="register-password" class="form-label">Password</label>
+          <input
+            id="register-password"
+            type="password"
+            formControlName="password"
+            class="form-input"
+            placeholder="Create a strong password"
+            autocomplete="new-password"
+            [class.input-error]="form.get('password')?.touched && form.get('password')?.invalid"
+          />
+
+          <!-- Live password rules checklist -->
+          <div class="password-rules">
+            <div class="password-rule" [class.valid]="hasMinLength">
+              <span class="password-rule-icon">{{ hasMinLength ? '✓' : '' }}</span>
+              <span>At least 8 characters</span>
+            </div>
+            <div class="password-rule" [class.valid]="hasUppercase">
+              <span class="password-rule-icon">{{ hasUppercase ? '✓' : '' }}</span>
+              <span>One uppercase letter (A-Z)</span>
+            </div>
+            <div class="password-rule" [class.valid]="hasLowercase">
+              <span class="password-rule-icon">{{ hasLowercase ? '✓' : '' }}</span>
+              <span>One lowercase letter (a-z)</span>
+            </div>
+            <div class="password-rule" [class.valid]="hasSpecial">
+              <span class="password-rule-icon">{{ hasSpecial ? '✓' : '' }}</span>
+              <span>One special character (!&#64;#$%^&*)</span>
+            </div>
+          </div>
+        </div>
+
+        <button
+          type="submit"
+          class="btn btn-primary btn-full-width btn-lg"
+          [disabled]="submitting()"
+          id="register-submit-btn"
+        >
+          @if (submitting()) {
+            <span class="spinner"></span>
+            Creating account...
+          } @else {
+            Create Account
+          }
+        </button>
+      </form>
+
+      <footer class="auth-footer">
+        <p>Already have an account? <a routerLink="/login">Sign in</a></p>
+      </footer>
+    </article>
+  </main>
+</section>
