@@ -89,11 +89,10 @@ public class ApplicationsController : ControllerBase
     //   ASP.NET Core automatically serializes the List<Application> to JSON.
     // -------------------------------------------------------------------------
     [HttpGet]
-    public async Task<ActionResult<List<Application>>> GetAll()
+    public async Task<ActionResult<List<Application>>> GetAll([FromQuery] string? userId)
     {
-        var applications = await _service.GetAllAsync();
+        var applications = await _service.GetAllAsync(userId);
 
-        // Return 200 OK with the list of applications as JSON
         return Ok(applications);
     }
 

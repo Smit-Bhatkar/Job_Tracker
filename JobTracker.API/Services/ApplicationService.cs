@@ -108,9 +108,15 @@ public class ApplicationService
     //   List<Application>. The 'Async' suffix means this runs without
     //   blocking the thread.
     // -------------------------------------------------------------------------
-    public async Task<List<Application>> GetAllAsync()
+    // If userId is provided, return only applications that belong to that user.
+    public async Task<List<Application>> GetAllAsync(string? userId = null)
     {
-        return await _collection.Find(app => true).ToListAsync();
+        if (string.IsNullOrWhiteSpace(userId))
+        {
+            return await _collection.Find(app => true).ToListAsync();
+        }
+
+        return await _collection.Find(app => app.UserId == userId).ToListAsync();
     }
 
     // -------------------------------------------------------------------------

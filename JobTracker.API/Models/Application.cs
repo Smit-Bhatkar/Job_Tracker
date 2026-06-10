@@ -113,4 +113,9 @@ public class Application
     // -------------------------------------------------------------------------
     [BsonElement("createdAt")]
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+    // Optional: the id of the user who owns this application. Stored as
+    // a string representation of the MongoDB ObjectId for the user.
+    [BsonElement("userId")]
+    public string? UserId { get; set; }
 }

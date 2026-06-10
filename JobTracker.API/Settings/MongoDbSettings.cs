@@ -48,4 +48,8 @@ public class MongoDbSettings
     // MongoDB creates the collection automatically on first insert!
     // In our case: "Applications"
     public string CollectionName { get; set; } = string.Empty;
+
+    // The name of the collection that stores user accounts for authentication.
+    // In our case: "Users"
+    public string UsersCollectionName { get; set; } = string.Empty;
 }

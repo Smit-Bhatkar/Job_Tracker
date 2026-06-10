@@ -44,6 +44,7 @@ builder.Services.Configure<MongoDbSettings>(
 //   AddScoped    → New instance per HTTP request (good for DbContext in EF Core)
 //   AddTransient → New instance every time it's injected (good for lightweight services)
 builder.Services.AddSingleton<ApplicationService>();
+builder.Services.AddSingleton<UserService>();
 
 // ---- Add Controllers ----
 // This tells ASP.NET Core to look for Controller classes and set up routing.
@@ -114,11 +115,30 @@ app.UseCors("AllowAngularDev");
 // we add authentication later (e.g., JWT tokens).
 app.UseAuthorization();
 
+// ---- Serve Angular Static Files ----
+// Angular 19 outputs built files to a "browser" subfolder.
+// We configure the static file middleware to serve from wwwroot/browser.
+var staticFileOptions = new StaticFileOptions
+{
+    FileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(
+        Path.Combine(builder.Environment.WebRootPath, "browser"))
+};
+app.UseDefaultFiles(new DefaultFilesOptions
+{
+    FileProvider = staticFileOptions.FileProvider
+});
+app.UseStaticFiles(staticFileOptions);
+
 // ---- Map Controller Routes ----
 // This tells ASP.NET Core to route incoming requests to our controller
 // action methods based on their [Route], [HttpGet], [HttpPost], etc. attributes.
 // Without this line, no controller endpoints would work!
 app.MapControllers();
+
+// ---- SPA Fallback ----
+// For any request that doesn't match an API route or a static file,
+// serve index.html so Angular's client-side routing can handle it.
+app.MapFallbackToFile("browser/index.html");
 
 // ---- Start the Server ----
 // This is a blocking call that starts listening for HTTP requests.
